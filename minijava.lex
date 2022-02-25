@@ -2,18 +2,21 @@
 delim     [ \t]
 bl        {delim}+
 line_comment	"//"[^\r\n]*
-multi_line_comment	"/*"(.|\n)*?"*/"
+multi_line_comment	"/*"([^"*"]|("*")*[^"*/"])*("*")*"*/"
 identifier	[A-Za-z_][A-Za-z0-9_]*
 integer_literal	[+-]?[1-9][0-9]*
 boolean_literal	true|false
+EscapeSequence      \\[bfnrt"\\]
+string_literal      "\""([^"\\\r\n]|{EscapeSequence})*"\""
 unclosed_comment    "/*"([^"*/"])*
 illegal_identifier  [0-9][a-zA-Z0-9]+
+
 
 %%
 
 {bl}                                                                                 /* pas d'actions */
 "\n" 			                                                             ++yylineno;
-[ \t\r\n]               								/* no action: ignore all white space */
+[ \t\r\n]               								                    /* no action: ignore all white space */
 
 "="										                              printf("ASSIGN : %s\n", yytext);
 "("										                              printf("OPEN_PARENTHESIS : %s\n", yytext);
@@ -37,7 +40,7 @@ illegal_identifier  [0-9][a-zA-Z0-9]+
 "public"									                              printf("PUBLIC_KEYWORD : %s\n", yytext);
 "static"									                              printf("STATIC_KEYWORD : %s\n", yytext);
 "void"									     	                    printf("VOID_KEYWORD : %s\n", yytext);
-"main"										                         printf("MAIN_CLASS_KEYWORD : %s\n", yytext);
+"public static void main"										     printf("MAIN_CLASS_KEYWORD : %s\n", yytext);
 "String"									                              printf("STRING_KEYWORD : %s\n", yytext);
 "return"									                              printf("RETURN_KEYWORD : %s\n", yytext);
 "int[]"									     	                    printf("INT_ARRAY_KEYWORD : %s\n", yytext);
@@ -52,11 +55,12 @@ illegal_identifier  [0-9][a-zA-Z0-9]+
 "this"								     	                         printf("THIS_KEYWORD : %s\n", yytext);
 "new" 	                                                                      printf("NEW_KEYWORD : %s\n", yytext);
 
+{integer_literal}								                         printf("INTEGER_LITERAL : %s\n", yytext);
+{string_literal}								                         printf("STRING_LITERAL : %s\n", yytext);
 {illegal_identifier}                                                            fprintf(stderr,"ERROR : Illegal identifier \'%s\' on line %d\n",yytext,yylineno);
 {line_comment}								     	                    printf("LINE_COMMENT : %s\n", yytext);
 {multi_line_comment}         							                    printf("MULTI_LINE_COMMENT : %s\n", yytext);
-{unclosed_comment}                                                              fprintf(stderr,"WARNING : Unclosed comment \'%s\' on line :%d\n",yytext,yylineno);
-{integer_literal}								                         printf("INTEGER_LITERAL : %s\n", yytext);
+{unclosed_comment}                                                              {fprintf(stderr,"WARNING : Unclosed comment \'%s\' on line :%d\n",yytext,yylineno);yyterminate();}
 {boolean_literal}								                         printf("BOOLEAN_LITERAL : %s\n", yytext);
 {identifier}								     	                    printf("IDENTIFIER : %s\n", yytext);
 .                                                                               fprintf(stderr,"ERROR : incorrect token \'%s\' on line %d\n",yytext,yylineno);
