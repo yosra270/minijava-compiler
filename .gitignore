@@ -1,0 +1,6 @@
+out/
+lex.yy.c
+out.txt
+*.tab.*
+*.output
+minijava_compiler
