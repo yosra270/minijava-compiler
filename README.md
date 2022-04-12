@@ -67,7 +67,7 @@ The front-end can be divided into the following phases :
     
       *Syntax errors* can be detected and reported at this level if an expression is not in accordance with the grammar.
 
-    * ***Semantic analysis*** :
+    * **Semantic analysis** :
 	
       The semantics of the language defines *what its programs mean*. So the semantic analysis is all about checking whether or not *the components of the source program are meaningful*. 
   
