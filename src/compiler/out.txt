@@ -1,6 +1,0 @@
-syntax error, unexpected void, expecting static near line 2
-syntax error, unexpected ; near line 6
-syntax error, unexpected {, expecting identifier near line 9
-lexical error, illegal identifier '4s' near line 11
-syntax error, unexpected ;, expecting identifier near line 11
-WARNING : Unclosed comment near line :16
