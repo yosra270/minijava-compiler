@@ -36,6 +36,11 @@ For reasons of simplification the grammar was restricted to the following :
             | "(" Expression ")"
  Identifier ::= <IDENTIFIER>
 ```
+### Requirements
+* Bison v3.5+ 
+* Flex v2.6+
+* IntelliJ IDEA
+
 ### Compiler Design
 A compiler consists of two parts: an ***analysis*** part (or *front-end* of the compiler) and a ***synthesis*** part (or *backend*).
 
