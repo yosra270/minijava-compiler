@@ -1,0 +1,2 @@
+syntax error, unexpected {, expecting identifier near line 1
+WARNING : Unclosed comment near line :23
