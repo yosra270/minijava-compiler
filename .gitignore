@@ -1,3 +1,13 @@
+# Compiler outputs
+lex.yy.c
+minijava_compiler
+out.txt
+*.output
+parser.tab.*
+
+# Compiled files
+out/
+
 # Prerequisites
 *.d
 
