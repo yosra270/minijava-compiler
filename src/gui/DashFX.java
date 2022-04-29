@@ -93,6 +93,7 @@ public class DashFX implements Initializable {
 
         try {
             Scanner scanner = new Scanner(sourceCodeFile);
+            codeText.setText("");
             while(scanner.hasNextLine()) {
                 codeText.appendText(scanner.nextLine() + "\n");
             }
