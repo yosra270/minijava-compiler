@@ -1,6 +1,8 @@
 # MiniJava Compiler
 ![demo](demo.gif)  
 
+![code genration](code_gen.svg)
+
 This project is an implementation of a Java compiler using *Flex* & *Bison*.
 
 

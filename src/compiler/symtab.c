@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "symtab.h"
+#include "code_generation.h"
 
 
 
@@ -20,6 +21,8 @@ symrec * putsym (char *sym_name, enum IdType type, int block, bool is_function, 
 	ptr->is_function = is_function;
 	ptr->is_initialized = is_initialised;
 	ptr->is_used = false;
+	ptr->offset = data_location();
+	ptr->fun_code_offset = -1;
 	ptr->params_nbre = params_nbre;
 	for (int i = 0; i< params_nbre; i++)
 		ptr->params_types[i] = params_types[i];

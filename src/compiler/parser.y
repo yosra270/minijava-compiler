@@ -6,7 +6,19 @@
 #include <stdbool.h>
 
 #include "symtab.h"
+#include "code_generation.h"
+#include "stack_machine.h"
 
+struct lbs /* For labels: if and while */
+{
+	int for_goto;
+	int for_jmp_false;
+};
+
+struct lbs * newlblrec() /* Allocate space for the labels */
+{
+	return (struct lbs *) malloc(sizeof(struct lbs));
+}
 
 extern int yylineno;
 void yyerror (char const *s);
@@ -18,6 +30,8 @@ char name [20];
 int params_nbre = 0;
 int param_index = 0;
 int params_types [20];
+int operators_number = 0;
+enum code_ops operators[99];
 
 /* For the block structure */
 int fun_offset = 0;
@@ -61,7 +75,7 @@ void install ( char *sym_name ,enum IdType type, int block, bool is_function, bo
 }
 
 /* Check if an identifier is declared before use */
-int context_check(char *sym_name , int block)
+int context_check(enum code_ops operation, char *sym_name , int block)
 {   
 	symrec *identifier;
 	identifier = lookup_sym( sym_name , block);
@@ -72,6 +86,7 @@ int context_check(char *sym_name , int block)
 		yyerror(error_msg);
 		}
 	else {
+		gen_code( operation, identifier->offset );
 		return identifier->type;
 	}
 	return -1;
@@ -107,6 +122,9 @@ void unused_vars_check(unused_vars* tab_vars)
 	}
 }
 
+
+
+
 %}
 
 
@@ -117,7 +135,8 @@ void unused_vars_check(unused_vars* tab_vars)
 	char *boolval;	
 	char *strval;
 	int idtype;
-	int optype;						
+	int optype;	
+	struct lbs *lbls; /* For backpatching */					
 }
 
 
@@ -151,9 +170,9 @@ void unused_vars_check(unused_vars* tab_vars)
 %token RETURN "return"
 %token BOOLEAN "boolean"
 %token INT "int"
-%token IF "if"
+%token <lbls> IF "if"
 %token ELSE "else"
-%token WHILE "while"	
+%token <lbls> WHILE "while"	
 %token PRINT "System.out.println"
 %token LENGTH "length"
 %token THIS "this"
@@ -174,7 +193,7 @@ void unused_vars_check(unused_vars* tab_vars)
 
 %%
                                                            
-program	     : MainClass ClassDeclarations
+program	     :ClassDeclarations MainClass {gen_code_main(HALT, -1); fetch_execute_cycle(); YYACCEPT;}
                 | error ClassDeclarations
                 ;
 
@@ -199,19 +218,11 @@ MainClass : CLASS IDENTIFIER OPEN_BRACE {
 		unused_vars_check(rmsym_block());
 		print_symtab();
 		block_out();
-		}
-
-            |error IDENTIFIER OPEN_BRACE PUBLIC STATIC VOID MAIN_CLASS OPEN_PARENTHESIS STRING OPEN_BRACKET CLOSE_BRACKET  IDENTIFIER CLOSE_PARENTHESIS OPEN_BRACE Statements CLOSE_BRACE CLOSE_BRACE
-            |CLASS error OPEN_BRACE PUBLIC STATIC VOID MAIN_CLASS OPEN_PARENTHESIS STRING OPEN_BRACKET CLOSE_BRACKET  IDENTIFIER CLOSE_PARENTHESIS OPEN_BRACE Statements CLOSE_BRACE CLOSE_BRACE
-            |CLASS IDENTIFIER error PUBLIC STATIC VOID MAIN_CLASS OPEN_PARENTHESIS STRING OPEN_BRACKET CLOSE_BRACKET  IDENTIFIER CLOSE_PARENTHESIS OPEN_BRACE Statements CLOSE_BRACE CLOSE_BRACE
-            |CLASS IDENTIFIER OPEN_BRACE error STATIC VOID MAIN_CLASS OPEN_PARENTHESIS STRING OPEN_BRACKET CLOSE_BRACKET  IDENTIFIER CLOSE_PARENTHESIS OPEN_BRACE Statements CLOSE_BRACE CLOSE_BRACE
-            
+		}            
             ;
             
 ClassDeclarations :
                     | ClassDeclarations ClassDeclaration
-
-                    | error ClassDeclaration
                     ;
 		
 ClassDeclaration: CLASS IDENTIFIER OPEN_BRACE  {
@@ -229,7 +240,7 @@ ClassDeclaration: CLASS IDENTIFIER OPEN_BRACE  {
 		print_symtab();
 		} 
 		EXTENDS IDENTIFIER {
-		context_check($5, block_offset);
+		context_check(OTHER, $5, block_offset);
            }
            OPEN_BRACE {
 		block_in();
@@ -238,57 +249,40 @@ ClassDeclaration: CLASS IDENTIFIER OPEN_BRACE  {
 		unused_vars_check(rmsym_block());
 		block_out();
 		}
-
-
-                | error IDENTIFIER  OPEN_BRACE VarsDeclarations MethodDeclarations CLOSE_BRACE
-                | CLASS error  OPEN_BRACE VarsDeclarations MethodDeclarations CLOSE_BRACE
-                | CLASS IDENTIFIER  error VarsDeclarations MethodDeclarations CLOSE_BRACE
                 ;
                 
 VarsDeclarations :
                 | VarsDeclarations VarsDeclaration
-
-                | error VarsDeclaration
                 ;
 		 
 VarsDeclaration: Type IDENTIFIER SEMICOLON {
 		install($2, (IdType) $1, block_offset, false, false, 0, NULL);
 		print_symtab();
 		}
-
-                | error IDENTIFIER SEMICOLON 
-                | Type error SEMICOLON 
                 ;
 
 MethodDeclarations :
                       |MethodDeclarations MethodDeclaration
-
-                      |error MethodDeclaration
                       ;
 
 MethodDeclaration: PUBLIC Type IDENTIFIER OPEN_PARENTHESIS FunctionParams CLOSE_PARENTHESIS OPEN_BRACE {
 		install($3, (IdType) $2, block_offset, true, false, params_nbre, params_types);
+		gen_code(BEGIN_FUN, -1);
+		symrec *s;
+		s = getsym ($3);
+		s->fun_code_offset = gen_label()-1;
+		
 		params_nbre = 0;
 		param_index = 0;
 		block_in();
 		print_symtab();
 		}
-		VarsDeclarations Statements RETURN Expression SEMICOLON CLOSE_BRACE {
+		VarsDeclarations Statements RETURN IDENTIFIER SEMICOLON CLOSE_BRACE {
 		unused_vars_check(rmsym_block());
 		print_symtab();
 		block_out();
+		gen_code(END_FUN, -1);
 		}
-
-
-                    |error Type IDENTIFIER OPEN_PARENTHESIS FunctionParams CLOSE_PARENTHESIS OPEN_BRACE VarsDeclarations Statements RETURN Expression SEMICOLON CLOSE_BRACE
-                    |PUBLIC error IDENTIFIER OPEN_PARENTHESIS FunctionParams CLOSE_PARENTHESIS OPEN_BRACE VarsDeclarations Statements RETURN Expression SEMICOLON CLOSE_BRACE
-                    |PUBLIC Type error OPEN_PARENTHESIS FunctionParams CLOSE_PARENTHESIS OPEN_BRACE VarsDeclarations Statements RETURN Expression SEMICOLON CLOSE_BRACE
-                    |PUBLIC Type IDENTIFIER error FunctionParams CLOSE_PARENTHESIS OPEN_BRACE VarsDeclarations Statements RETURN Expression SEMICOLON CLOSE_BRACE
-                    |PUBLIC Type IDENTIFIER OPEN_PARENTHESIS error CLOSE_PARENTHESIS OPEN_BRACE VarsDeclarations Statements RETURN Expression SEMICOLON CLOSE_BRACE
-                    |PUBLIC Type IDENTIFIER OPEN_PARENTHESIS FunctionParams error OPEN_BRACE VarsDeclarations Statements RETURN Expression SEMICOLON CLOSE_BRACE
-                    |PUBLIC Type IDENTIFIER OPEN_PARENTHESIS FunctionParams CLOSE_PARENTHESIS error VarsDeclarations Statements RETURN Expression SEMICOLON CLOSE_BRACE
-                    |PUBLIC Type IDENTIFIER OPEN_PARENTHESIS FunctionParams CLOSE_PARENTHESIS OPEN_BRACE error Statements RETURN Expression SEMICOLON CLOSE_BRACE
-                    
                      ;
 
 
@@ -306,12 +300,6 @@ FunctionParameters :  Type IDENTIFIER {
 			param_index ++;
 		     }
 		     COMMA FunctionParameters
-
-
-                    |error IDENTIFIER
-                    | error IDENTIFIER COMMA FunctionParameters
-                    | Type error COMMA FunctionParameters
-                    | Type IDENTIFIER error FunctionParameters
                     ;
 
 Type : INT OPEN_BRACKET CLOSE_BRACKET {$$ = 0;}
@@ -319,22 +307,39 @@ Type : INT OPEN_BRACKET CLOSE_BRACKET {$$ = 0;}
        | BOOLEAN {$$ = 2;}
        | STRING {$$ = 3;}
        | IDENTIFIER {$$ = 4;}
-
-        | error OPEN_BRACKET CLOSE_BRACKET
-        | INT error CLOSE_BRACKET
        ;
 
 Statements :
         |Statements Statement 
-
-        |error Statement
         ;
 Statement:  OPEN_BRACE Statement CLOSE_BRACE
-            |IF OPEN_PARENTHESIS Expression CLOSE_PARENTHESIS Statement ELSE Statement
-            |WHILE OPEN_PARENTHESIS Expression CLOSE_PARENTHESIS Statement
+            |IF OPEN_PARENTHESIS Expression CLOSE_PARENTHESIS {
+            $1 = (struct lbs *) newlblrec();
+            $1->for_jmp_false = reserve_loc(); 
+            }
+            Statement {
+            $1->for_goto = reserve_loc(); 
+            }
+            ELSE {
+            back_patch( $1->for_jmp_false, JMP_FALSE, gen_label() );
+            }
+            Statement {
+            back_patch( $1->for_goto, GOTO, gen_label() );
+            }
+            |WHILE {
+            $1 = (struct lbs *) newlblrec();
+            $1->for_goto = gen_label();
+            }
+            OPEN_PARENTHESIS Expression CLOSE_PARENTHESIS {
+            $1->for_jmp_false = reserve_loc();
+            }
+            Statement {
+            gen_code( GOTO, $1->for_goto );
+            back_patch( $1->for_jmp_false, JMP_FALSE, gen_label() ); 
+            }
             |PRINT OPEN_PARENTHESIS Expression CLOSE_PARENTHESIS SEMICOLON
             |IDENTIFIER ASSIGN Expression SEMICOLON {
-                context_check($1, block_offset);
+                context_check(STORE, $1, block_offset);
             	sym_initialise($1);
             	type_mismatch_check($1, $3);
 		symrec *s;
@@ -344,45 +349,19 @@ Statement:  OPEN_BRACE Statement CLOSE_BRACE
             }
             |
 
-
-
-            | error Statement CLOSE_BRACE
-            | OPEN_BRACE error CLOSE_BRACE
-            |error OPEN_PARENTHESIS Expression CLOSE_PARENTHESIS Statement ELSE Statement
-            |IF error Expression CLOSE_PARENTHESIS Statement ELSE Statement
-            |IF OPEN_PARENTHESIS error CLOSE_PARENTHESIS Statement ELSE Statement
-            |IF OPEN_PARENTHESIS Expression error Statement ELSE Statement
-            |IF OPEN_PARENTHESIS Expression CLOSE_PARENTHESIS error ELSE Statement
-            |IF OPEN_PARENTHESIS Expression CLOSE_PARENTHESIS Statement error Statement
-            |error OPEN_PARENTHESIS Expression CLOSE_PARENTHESIS Statement
-            |WHILE error Expression CLOSE_PARENTHESIS Statement
-            |WHILE OPEN_PARENTHESIS error CLOSE_PARENTHESIS Statement
-            |WHILE OPEN_PARENTHESIS Expression error Statement
-            |error OPEN_PARENTHESIS Expression CLOSE_PARENTHESIS SEMICOLON
-            |PRINT error Expression CLOSE_PARENTHESIS SEMICOLON
-            |PRINT OPEN_PARENTHESIS error CLOSE_PARENTHESIS SEMICOLON
-            |PRINT OPEN_PARENTHESIS Expression error SEMICOLON
-            |error ASSIGN Expression SEMICOLON
-            |IDENTIFIER error Expression SEMICOLON
-            |IDENTIFIER ASSIGN error SEMICOLON
-            |error OPEN_BRACKET Expression CLOSE_BRACKET ASSIGN Expression SEMICOLON
-            |IDENTIFIER error Expression CLOSE_BRACKET ASSIGN Expression SEMICOLON
-            |IDENTIFIER OPEN_BRACKET error CLOSE_BRACKET ASSIGN Expression SEMICOLON
-            |IDENTIFIER OPEN_BRACKET Expression error ASSIGN Expression SEMICOLON
-            |IDENTIFIER OPEN_BRACKET Expression CLOSE_BRACKET error Expression SEMICOLON
-            |IDENTIFIER OPEN_BRACKET Expression CLOSE_BRACKET ASSIGN error SEMICOLON
             ;
 
 Expression : Expression Operator Expression {
 	     if ($1 > 0 && $3>0 && $1 != $3)
 	     	yyerror( "semantic error, type mismatch "); 
 	     $$ = $2;
+	     gen_code(operators[--operators_number], -1 );
 	     }
             |Expression OPEN_BRACKET Expression CLOSE_BRACKET {$$ = 1;}
             |Expression DOT LENGTH {$$ = 1;}
             |Expression DOT IDENTIFIER {
             strcpy(name, $3);
-            type = context_check($3 , block_offset);
+            type = context_check(OTHER, $3 , block_offset);
             if (type != -1) {
 		    symrec *s;
 		    s = getsym ($3);
@@ -404,12 +383,15 @@ Expression : Expression Operator Expression {
 	    }
             params_nbre = 0;
             param_index = 0;
+            symrec *s;
+	    s = getsym ($3);
+            gen_code(FUN_CALL, s->fun_code_offset);
             }
-            |INTEGER_LITERAL {$$ = 1;}
-            |BOOLEAN_LITERAL {$$ = 2;}
-            |STRING_LITERAL {$$ = 3;}
+            |INTEGER_LITERAL {$$ = 1; gen_code( LDC, $1 ); }
+            |BOOLEAN_LITERAL {$$ = 2; /*gen_code( LDC, $1 );*/}
+            |STRING_LITERAL {$$ = 3; /*gen_code( LDC, $1 );*/}
             |IDENTIFIER {
-            $$ = context_check($1 , block_offset);
+            $$ = context_check(LDV, $1 , block_offset);
             if ($$ < 4 && $$ > 0)
             	initialization_check($1); 
 	    symrec *s;
@@ -423,32 +405,11 @@ Expression : Expression Operator Expression {
 	     	yyerror( "semantic error, type mismatch "); 
             $$ = 0;
             }
-            |NEW IDENTIFIER {context_check($2 , block_offset);} OPEN_PARENTHESIS CLOSE_PARENTHESIS { $$ = 4;}
+            |NEW IDENTIFIER {context_check(OTHER, $2 , block_offset);} OPEN_PARENTHESIS CLOSE_PARENTHESIS { $$ = 4;}
             |NOT_OP Expression {$$ = 2;}
             |OPEN_PARENTHESIS Expression CLOSE_PARENTHESIS {$$ = $2;}
 
 
-
-            | error Operator Expression
-            | Expression error Expression
-            |error OPEN_BRACKET Expression CLOSE_BRACKET
-            |Expression error Expression CLOSE_BRACKET
-            |Expression OPEN_BRACKET error CLOSE_BRACKET
-            |error DOT LENGTH
-            |Expression error LENGTH
-            |error DOT IDENTIFIER OPEN_PARENTHESIS MethodVars  CLOSE_PARENTHESIS
-            |Expression error IDENTIFIER OPEN_PARENTHESIS MethodVars  CLOSE_PARENTHESIS
-            |Expression DOT error OPEN_PARENTHESIS MethodVars  CLOSE_PARENTHESIS
-            |error INT OPEN_BRACKET Expression CLOSE_BRACKET
-            |NEW error OPEN_BRACKET Expression CLOSE_BRACKET
-            |NEW INT error Expression CLOSE_BRACKET
-            |NEW INT OPEN_BRACKET error CLOSE_BRACKET
-            |error IDENTIFIER OPEN_PARENTHESIS CLOSE_PARENTHESIS
-            |NEW error OPEN_PARENTHESIS CLOSE_PARENTHESIS
-            |NEW IDENTIFIER error CLOSE_PARENTHESIS
-            |error Expression
-            |error Expression CLOSE_PARENTHESIS
-            |OPEN_PARENTHESIS error CLOSE_PARENTHESIS
             ;
 
 MethodVars : MethodVariables
@@ -495,12 +456,9 @@ MethodVariables : Expression {
 		}
 		}
 		COMMA MethodVariables
-
-                | error COMMA MethodVariables
-                | Expression error MethodVariables
                 ;
 
-Operator : AND_OP {$$ = 2;}| LESS_THAN_OP {$$ = 2;}| PLUS_OP {$$ = 1;}| MINUS_OP {$$ = 1;}| MULTIPLICATION_OP {$$ = 1;};
+Operator : AND_OP {$$ = 2; operators[operators_number++] = AND;}| LESS_THAN_OP {$$ = 2; operators[operators_number++] = LT;}| PLUS_OP {$$ = 1; operators[operators_number++] = PLUS; }| MINUS_OP {$$ = 1; operators[operators_number++] = MINUS;}| MULTIPLICATION_OP {$$ = 1; operators[operators_number++] = MUL;};
 
 
 
@@ -510,21 +468,60 @@ Operator : AND_OP {$$ = 2;}| LESS_THAN_OP {$$ = 2;}| PLUS_OP {$$ = 1;}| MINUS_OP
        
 MainStatements : MainStatements MainStatement | ;
 MainStatement : OPEN_BRACE MainStatement CLOSE_BRACE
-            |IF OPEN_PARENTHESIS MainExpression CLOSE_PARENTHESIS MainStatement ELSE MainStatement
-            |WHILE OPEN_PARENTHESIS MainExpression CLOSE_PARENTHESIS MainStatement
+            |IF OPEN_PARENTHESIS MainExpression CLOSE_PARENTHESIS {
+            $1 = (struct lbs *) newlblrec();
+            $1->for_jmp_false = reserve_loc_main(); 
+            }
+            MainStatement {
+            $1->for_goto = reserve_loc_main(); 
+            }
+            ELSE {
+            back_patch_main( $1->for_jmp_false, JMP_FALSE, gen_label_main() );
+            }
+            MainStatement {
+            back_patch_main( $1->for_goto, GOTO, gen_label_main() );
+            }
+            |WHILE {
+            $1 = (struct lbs *) newlblrec();
+            $1->for_goto = gen_label_main();
+            }
+            OPEN_PARENTHESIS MainExpression CLOSE_PARENTHESIS {
+            $1->for_jmp_false = reserve_loc_main();
+            }
+            MainStatement {
+            gen_code_main( GOTO, $1->for_goto );
+            back_patch_main( $1->for_jmp_false, JMP_FALSE, gen_label_main() ); 
+            }
             |PRINT OPEN_PARENTHESIS MainExpression CLOSE_PARENTHESIS SEMICOLON
-            |IDENTIFIER ASSIGN MainExpression SEMICOLON
+            |IDENTIFIER ASSIGN MainExpression SEMICOLON {
+            symrec *s;
+            s = getsym ($1);
+            if (s)
+            	gen_code_main(STORE, s->offset);
+            }
             |
             ;
             
-MainExpression : MainExpression Operator MainExpression 
+MainExpression : MainExpression Operator MainExpression {
+		gen_code_main(operators[--operators_number], -1 );
+		}
             |MainExpression OPEN_BRACKET MainExpression CLOSE_BRACKET 
             |MainExpression DOT LENGTH
-            |MainExpression DOT IDENTIFIER OPEN_PARENTHESIS MainMethodVars  CLOSE_PARENTHESIS 
-            |INTEGER_LITERAL 
+            |IDENTIFIER DOT IDENTIFIER OPEN_PARENTHESIS MainMethodVars  CLOSE_PARENTHESIS {
+            symrec *s;
+	    s = getsym ($3);
+	    if (s)
+            	gen_code_main(FUN_CALL, s->fun_code_offset);
+            }
+            |INTEGER_LITERAL {gen_code_main( LDC, $1 );}
             |BOOLEAN_LITERAL 
             |STRING_LITERAL 
-            |IDENTIFIER 
+            |IDENTIFIER {
+            symrec *s;
+	    s = getsym ($1);
+	    if (s)
+            	gen_code_main( LDV, s->offset );
+            }
             |THIS
             |NEW INT OPEN_BRACKET MainExpression CLOSE_BRACKET
             |NEW IDENTIFIER OPEN_PARENTHESIS CLOSE_PARENTHESIS

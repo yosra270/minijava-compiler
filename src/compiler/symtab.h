@@ -9,6 +9,8 @@ typedef enum IdType {int_array, integer, boolean, string, _class, function} IdTy
 typedef struct symrec
 {
 	char *name; /* name of symbol */
+	int offset; /* data offset */
+	int fun_code_offset; /*code ofsset in the case of a function*/
 	enum IdType type;  
 	struct symrec *next; /* link field */
 	int block_offset;	/* block structure */
